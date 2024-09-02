@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import HelpButton from '../components/HelpButton';
+import Draggable from 'react-draggable';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
@@ -19,23 +20,101 @@ const DragDropArea = ({ onFileChange }) => {
   // ... (existing DragDropArea component code)
 };
 
-const SignatureField = ({ onAdd }) => {
-  const [signature, setSignature] = useState('');
+const SignatureCanvas = ({ onSave, onClose }) => {
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    context.lineWidth = 2;
+    context.strokeStyle = '#000000';
+  }, []);
+
+  const startDrawing = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const context = canvas.getContext('2d');
+    context.beginPath();
+    context.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const context = canvas.getContext('2d');
+    context.lineTo(x, y);
+    context.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const handleSave = () => {
+    const canvas = canvasRef.current;
+    const signatureImage = canvas.toDataURL();
+    onSave(signatureImage);
+  };
 
   return (
-    <div className="flex items-center space-x-2 mb-2">
-      <Input
-        type="text"
-        placeholder="Signature"
-        value={signature}
-        onChange={(e) => setSignature(e.target.value)}
+    <div className="p-4">
+      <canvas
+        ref={canvasRef}
+        width={400}
+        height={200}
+        className="border border-gray-300"
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={stopDrawing}
+        onMouseOut={stopDrawing}
       />
-      <Button onClick={() => {
-        if (signature) {
-          onAdd({ type: 'signature', value: signature });
-          setSignature('');
-        }
-      }}>Add</Button>
+      <div className="mt-4 flex justify-between">
+        <Button onClick={handleSave}>Save Signature</Button>
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+      </div>
+    </div>
+  );
+};
+
+const SignatureField = ({ onAdd }) => {
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [signature, setSignature] = useState(null);
+
+  const handleOpenDrawing = () => {
+    setIsDrawing(true);
+  };
+
+  const handleSaveSignature = (signatureImage) => {
+    setSignature(signatureImage);
+    setIsDrawing(false);
+    onAdd({ type: 'signature', value: signatureImage });
+  };
+
+  const handleCloseDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  return (
+    <div className="mb-2">
+      <Button onClick={handleOpenDrawing}>Add Signature</Button>
+      <Dialog open={isDrawing} onOpenChange={setIsDrawing}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Draw Your Signature</DialogTitle>
+          </DialogHeader>
+          <SignatureCanvas onSave={handleSaveSignature} onClose={handleCloseDrawing} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
@@ -99,6 +178,36 @@ const CheckboxField = ({ onAdd }) => {
         Add Checkbox
       </Button>
     </div>
+  );
+};
+
+const DraggableField = ({ field, index, onRemove }) => {
+  const nodeRef = useRef(null);
+
+  return (
+    <Draggable
+      nodeRef={nodeRef}
+      defaultPosition={{ x: 0, y: 0 }}
+      bounds="parent"
+    >
+      <div ref={nodeRef} className="absolute cursor-move">
+        <div className="bg-white border border-gray-300 p-2 rounded shadow-md">
+          {field.type === 'signature' && <img src={field.value} alt="Signature" className="w-32 h-16 object-contain" />}
+          {field.type === 'initials' && <span className="font-bold">{field.value}</span>}
+          {field.type === 'text' && <span>{field.value}</span>}
+          {field.type === 'date' && <CalendarIcon />}
+          {field.type === 'checkbox' && <CheckSquareIcon />}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute top-0 right-0"
+            onClick={() => onRemove(index)}
+          >
+            <TrashIcon className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </Draggable>
   );
 };
 
@@ -275,17 +384,12 @@ const Index = () => {
                             renderAnnotationLayer={true}
                           />
                           {signatureFields.map((field, fieldIndex) => (
-                            <div
+                            <DraggableField
                               key={fieldIndex}
-                              className="absolute"
-                              style={{ top: `${field.y}px`, left: `${field.x}px` }}
-                            >
-                              {field.type === 'signature' && <PenIcon />}
-                              {field.type === 'initials' && <span className="font-bold">{field.value}</span>}
-                              {field.type === 'text' && <span>{field.value}</span>}
-                              {field.type === 'date' && <CalendarIcon />}
-                              {field.type === 'checkbox' && <CheckSquareIcon />}
-                            </div>
+                              field={field}
+                              index={fieldIndex}
+                              onRemove={removeSignatureField}
+                            />
                           ))}
                         </div>
                       ))}
