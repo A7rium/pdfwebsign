@@ -5,7 +5,7 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import PDFSidebar from '../components/PDFSidebar';
 import Navbar from '../components/Navbar';
 import { PDFDocument } from 'pdf-lib';
-import { FileIcon, PenIcon, CalendarIcon, CheckSquareIcon, PlusCircleIcon, TrashIcon } from 'lucide-react';
+import { FileIcon, PenIcon, CalendarIcon, CheckSquareIcon, PlusCircleIcon, TrashIcon, TypeIcon, UserIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,9 @@ const SignatureCanvas = ({ onSave, onClose }) => {
         onMouseMove={draw}
         onMouseUp={stopDrawing}
         onMouseOut={stopDrawing}
+        onTouchStart={startDrawing}
+        onTouchMove={draw}
+        onTouchEnd={stopDrawing}
       />
       <div className="mt-4 flex justify-between">
         <Button onClick={handleSave}>Save Signature</Button>
@@ -86,97 +89,28 @@ const SignatureCanvas = ({ onSave, onClose }) => {
   );
 };
 
-const SignatureField = ({ onAdd }) => {
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [signature, setSignature] = useState(null);
+const InputField = ({ type, onAdd, onClose }) => {
+  const [value, setValue] = useState('');
 
-  const handleOpenDrawing = () => {
-    setIsDrawing(true);
-  };
-
-  const handleSaveSignature = (signatureImage) => {
-    setSignature(signatureImage);
-    setIsDrawing(false);
-    onAdd({ type: 'signature', value: signatureImage });
-  };
-
-  const handleCloseDrawing = () => {
-    setIsDrawing(false);
+  const handleSave = () => {
+    if (value.trim()) {
+      onAdd({ type, value: value.trim() });
+      onClose();
+    }
   };
 
   return (
-    <div className="mb-2">
-      <Button onClick={handleOpenDrawing}>Add Signature</Button>
-      <Dialog open={isDrawing} onOpenChange={setIsDrawing}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Draw Your Signature</DialogTitle>
-          </DialogHeader>
-          <SignatureCanvas onSave={handleSaveSignature} onClose={handleCloseDrawing} />
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-};
-
-const InitialsField = ({ onAdd }) => {
-  const [initials, setInitials] = useState('');
-
-  return (
-    <div className="flex items-center space-x-2 mb-2">
+    <div className="p-4">
       <Input
         type="text"
-        placeholder="Initials"
-        value={initials}
-        onChange={(e) => setInitials(e.target.value)}
+        placeholder={`Enter ${type}`}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
       />
-      <Button onClick={() => {
-        if (initials) {
-          onAdd({ type: 'initials', value: initials });
-          setInitials('');
-        }
-      }}>Add</Button>
-    </div>
-  );
-};
-
-const TextField = ({ onAdd }) => {
-  const [text, setText] = useState('');
-
-  return (
-    <div className="flex items-center space-x-2 mb-2">
-      <Input
-        type="text"
-        placeholder="Text Field"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
-      <Button onClick={() => {
-        if (text) {
-          onAdd({ type: 'text', value: text });
-          setText('');
-        }
-      }}>Add</Button>
-    </div>
-  );
-};
-
-const DateField = ({ onAdd }) => {
-  return (
-    <div className="flex items-center space-x-2 mb-2">
-      <Button onClick={() => onAdd({ type: 'date', value: new Date().toISOString() })}>
-        Add Date Field
-      </Button>
-    </div>
-  );
-};
-
-const CheckboxField = ({ onAdd }) => {
-  return (
-    <div className="flex items-center space-x-2 mb-2">
-      <Button onClick={() => onAdd({ type: 'checkbox', value: false })}>
-        Add Checkbox
-      </Button>
+      <div className="mt-4 flex justify-between">
+        <Button onClick={handleSave}>Add {type}</Button>
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+      </div>
     </div>
   );
 };
@@ -193,8 +127,8 @@ const DraggableField = ({ field, index, onRemove }) => {
       <div ref={nodeRef} className="absolute cursor-move">
         <div className="bg-white border border-gray-300 p-2 rounded shadow-md">
           {field.type === 'signature' && <img src={field.value} alt="Signature" className="w-32 h-16 object-contain" />}
-          {field.type === 'initials' && <span className="font-bold">{field.value}</span>}
           {field.type === 'text' && <span>{field.value}</span>}
+          {field.type === 'name' && <span>{field.value}</span>}
           {field.type === 'date' && <CalendarIcon />}
           {field.type === 'checkbox' && <CheckSquareIcon />}
           <Button
@@ -220,9 +154,11 @@ const Index = () => {
   const [isSaveAsModalOpen, setIsSaveAsModalOpen] = useState(false);
   const [saveAsFileName, setSaveAsFileName] = useState('');
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
-  const [signatureFields, setSignatureFields] = useState([]);
+  const [fields, setFields] = useState([]);
   const [isInviteSigneesModalOpen, setIsInviteSigneesModalOpen] = useState(false);
   const [signees, setSignees] = useState([]);
+  const [isAddFieldModalOpen, setIsAddFieldModalOpen] = useState(false);
+  const [currentFieldType, setCurrentFieldType] = useState(null);
   const mainContentRef = useRef(null);
 
   const toggleSidebar = () => {
@@ -285,14 +221,20 @@ const Index = () => {
     setPdfName(newTitle);
   };
 
-  const addSignatureField = (field) => {
-    setSignatureFields([...signatureFields, field]);
+  const addField = (field) => {
+    setFields([...fields, field]);
+    setIsAddFieldModalOpen(false);
   };
 
-  const removeSignatureField = (index) => {
-    const newFields = [...signatureFields];
+  const removeField = (index) => {
+    const newFields = [...fields];
     newFields.splice(index, 1);
-    setSignatureFields(newFields);
+    setFields(newFields);
+  };
+
+  const handleAddField = (type) => {
+    setCurrentFieldType(type);
+    setIsAddFieldModalOpen(true);
   };
 
   const handleInviteSignees = () => {
@@ -383,12 +325,12 @@ const Index = () => {
                             renderTextLayer={true}
                             renderAnnotationLayer={true}
                           />
-                          {signatureFields.map((field, fieldIndex) => (
+                          {fields.map((field, fieldIndex) => (
                             <DraggableField
                               key={fieldIndex}
                               field={field}
                               index={fieldIndex}
-                              onRemove={removeSignatureField}
+                              onRemove={removeField}
                             />
                           ))}
                         </div>
@@ -398,20 +340,30 @@ const Index = () => {
                 </div>
                 <div className="w-64 ml-4 bg-white p-4 rounded-lg shadow-lg">
                   <h3 className="text-lg font-semibold mb-4">Add Fields</h3>
-                  <SignatureField onAdd={addSignatureField} />
-                  <InitialsField onAdd={addSignatureField} />
-                  <TextField onAdd={addSignatureField} />
-                  <DateField onAdd={addSignatureField} />
-                  <CheckboxField onAdd={addSignatureField} />
+                  <Button onClick={() => handleAddField('signature')} className="w-full mb-2">
+                    <PenIcon className="mr-2 h-4 w-4" />Add Signature
+                  </Button>
+                  <Button onClick={() => handleAddField('text')} className="w-full mb-2">
+                    <TypeIcon className="mr-2 h-4 w-4" />Add Text
+                  </Button>
+                  <Button onClick={() => handleAddField('name')} className="w-full mb-2">
+                    <UserIcon className="mr-2 h-4 w-4" />Add Name
+                  </Button>
+                  <Button onClick={() => handleAddField('date')} className="w-full mb-2">
+                    <CalendarIcon className="mr-2 h-4 w-4" />Add Date
+                  </Button>
+                  <Button onClick={() => handleAddField('checkbox')} className="w-full mb-2">
+                    <CheckSquareIcon className="mr-2 h-4 w-4" />Add Checkbox
+                  </Button>
                   <div className="mt-4">
                     <h4 className="font-semibold mb-2">Added Fields</h4>
-                    {signatureFields.map((field, index) => (
+                    {fields.map((field, index) => (
                       <div key={index} className="flex justify-between items-center mb-2">
                         <span>{field.type}</span>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => removeSignatureField(index)}
+                          onClick={() => removeField(index)}
                         >
                           <TrashIcon className="h-4 w-4" />
                         </Button>
@@ -484,6 +436,18 @@ const Index = () => {
               </div>
             ))}
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isAddFieldModalOpen} onOpenChange={setIsAddFieldModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add {currentFieldType}</DialogTitle>
+          </DialogHeader>
+          {currentFieldType === 'signature' ? (
+            <SignatureCanvas onSave={(value) => addField({ type: 'signature', value })} onClose={() => setIsAddFieldModalOpen(false)} />
+          ) : (
+            <InputField type={currentFieldType} onAdd={addField} onClose={() => setIsAddFieldModalOpen(false)} />
+          )}
         </DialogContent>
       </Dialog>
       <HelpButton />
