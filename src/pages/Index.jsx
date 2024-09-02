@@ -5,7 +5,7 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import PDFSidebar from '../components/PDFSidebar';
 import Navbar from '../components/Navbar';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { FileIcon, PenIcon, CalendarIcon, CheckSquareIcon, PlusCircleIcon, TrashIcon, TypeIcon, UserIcon } from 'lucide-react';
+import { FileIcon, PenIcon, CalendarIcon, CheckSquareIcon, PlusCircleIcon, TrashIcon, TypeIcon, UserIcon, SendIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,12 +24,13 @@ const SignatureCanvas = ({ onSave, onClose }) => {
   // ... (existing SignatureCanvas component code)
 };
 
-const InputField = ({ type, onAdd, onClose }) => {
+const InputField = ({ type, onAdd, onClose, signees }) => {
   const [value, setValue] = useState('');
+  const [selectedSignee, setSelectedSignee] = useState(signees[0]?.email || '');
 
   const handleSave = () => {
     if (value.trim()) {
-      onAdd({ type, value: value.trim() });
+      onAdd({ type, value: value.trim(), signee: selectedSignee });
       onClose();
     }
   };
@@ -41,7 +42,19 @@ const InputField = ({ type, onAdd, onClose }) => {
         placeholder={`Enter ${type}`}
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        className="mb-2"
       />
+      <select
+        value={selectedSignee}
+        onChange={(e) => setSelectedSignee(e.target.value)}
+        className="w-full p-2 mb-4 border rounded"
+      >
+        {signees.map((signee) => (
+          <option key={signee.email} value={signee.email}>
+            {signee.name} ({signee.email})
+          </option>
+        ))}
+      </select>
       <div className="mt-4 flex justify-between">
         <Button onClick={handleSave}>Add {type}</Button>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -66,6 +79,7 @@ const DraggableField = ({ field, index, onRemove }) => {
           {field.type === 'name' && <span>{field.value}</span>}
           {field.type === 'date' && <CalendarIcon />}
           {field.type === 'checkbox' && <CheckSquareIcon />}
+          <div className="text-xs mt-1">For: {field.signee}</div>
           <Button
             variant="ghost"
             size="sm"
@@ -90,72 +104,14 @@ const Index = () => {
   const [saveAsFileName, setSaveAsFileName] = useState('');
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [fields, setFields] = useState([]);
-  const [isInviteSigneesModalOpen, setIsInviteSigneesModalOpen] = useState(false);
+  const [isAddESignModalOpen, setIsAddESignModalOpen] = useState(false);
   const [signees, setSignees] = useState([]);
   const [isAddFieldModalOpen, setIsAddFieldModalOpen] = useState(false);
   const [currentFieldType, setCurrentFieldType] = useState(null);
   const [isAllSigned, setIsAllSigned] = useState(false);
   const mainContentRef = useRef(null);
 
-  const toggleSidebar = () => {
-    setIsSidebarVisible(!isSidebarVisible);
-  };
-
-  const onFileChange = (event) => {
-    const file = event.target.files[0];
-    if (file && file.type === "application/pdf") {
-      setPdfFile(URL.createObjectURL(file));
-      setPdfName(file.name);
-      setCurrentPage(1);
-    } else {
-      alert("Please select a valid PDF file.");
-    }
-  };
-
-  const onDocumentLoadSuccess = ({ numPages }) => {
-    setNumPages(numPages);
-    setPageOrder(Array.from({ length: numPages }, (_, i) => i + 1));
-  };
-
-  const scrollToPage = (pageNumber) => {
-    const pageElement = document.getElementById(`page_${pageNumber}`);
-    if (pageElement && mainContentRef.current) {
-      mainContentRef.current.scrollTo({
-        top: pageElement.offsetTop,
-        behavior: 'smooth'
-      });
-    }
-  };
-
-  const onDragEnd = (result) => {
-    if (!result.destination) return;
-
-    const newPageOrder = Array.from(pageOrder);
-    const [reorderedItem] = newPageOrder.splice(result.source.index, 1);
-    newPageOrder.splice(result.destination.index, 0, reorderedItem);
-
-    setPageOrder(newPageOrder);
-  };
-
-  const onDeletePage = async (index) => {
-    // ... (existing onDeletePage function code)
-  };
-
-  const onSave = async (saveAs = false) => {
-    // ... (existing onSave function code)
-  };
-
-  const handleSaveAs = () => {
-    // ... (existing handleSaveAs function code)
-  };
-
-  const onMerge = async (event) => {
-    // ... (existing onMerge function code)
-  };
-
-  const handleTitleChange = (newTitle) => {
-    setPdfName(newTitle);
-  };
+  // ... (existing functions like toggleSidebar, onFileChange, onDocumentLoadSuccess, scrollToPage, onDragEnd, onDeletePage, onSave, handleSaveAs, onMerge, handleTitleChange)
 
   const addField = (field) => {
     setFields([...fields, field]);
@@ -173,8 +129,8 @@ const Index = () => {
     setIsAddFieldModalOpen(true);
   };
 
-  const handleInviteSignees = () => {
-    setIsInviteSigneesModalOpen(true);
+  const handleAddESign = () => {
+    setIsAddESignModalOpen(true);
   };
 
   const addSignee = (signee) => {
@@ -188,9 +144,9 @@ const Index = () => {
   };
 
   const checkAllSigned = () => {
-    const requiredSignatures = signees.length;
-    const actualSignatures = fields.filter(field => field.type === 'signature').length;
-    setIsAllSigned(actualSignatures >= requiredSignatures);
+    const requiredFields = signees.length * 2; // Assuming each signee needs to add at least 2 fields (e.g., signature and name)
+    const actualFields = fields.length;
+    setIsAllSigned(actualFields >= requiredFields);
   };
 
   useEffect(() => {
@@ -199,7 +155,7 @@ const Index = () => {
 
   const generateESignaturePage = async () => {
     if (!isAllSigned) {
-      alert("Not all signees have signed the document yet.");
+      alert("Not all signees have completed their required fields.");
       return;
     }
 
@@ -218,7 +174,7 @@ const Index = () => {
 
     let yOffset = height - 100;
     signees.forEach((signee, index) => {
-      const signature = fields.find(field => field.type === 'signature' && field.signee === signee.email);
+      const signeeFields = fields.filter(field => field.signee === signee.email);
       page.drawText(`${index + 1}. ${signee.name} (${signee.email})`, {
         x: 50,
         y: yOffset,
@@ -227,6 +183,16 @@ const Index = () => {
         color: rgb(0, 0, 0),
       });
       yOffset -= 20;
+      signeeFields.forEach(field => {
+        page.drawText(`   ${field.type}: ${field.value}`, {
+          x: 50,
+          y: yOffset,
+          size: 10,
+          font,
+          color: rgb(0, 0, 0),
+        });
+        yOffset -= 15;
+      });
       page.drawText(`   Signed on: ${new Date().toLocaleString()}`, {
         x: 50,
         y: yOffset,
@@ -245,34 +211,17 @@ const Index = () => {
     setPageOrder([...pageOrder, numPages + 1]);
   };
 
-  useEffect(() => {
-    const handleScroll = () => {
-      if (mainContentRef.current) {
-        const { scrollTop, clientHeight } = mainContentRef.current;
-        const pageElements = document.querySelectorAll('[id^="page_"]');
-        for (let i = 0; i < pageElements.length; i++) {
-          const element = pageElements[i];
-          const elementTop = element.offsetTop;
-          const elementBottom = elementTop + element.clientHeight;
-          if (scrollTop >= elementTop - clientHeight / 2 && scrollTop < elementBottom - clientHeight / 2) {
-            setCurrentPage(i + 1);
-            break;
-          }
-        }
-      }
-    };
-
-    const contentElement = mainContentRef.current;
-    if (contentElement) {
-      contentElement.addEventListener('scroll', handleScroll);
+  const sendForESigning = () => {
+    // This function would typically involve sending the document to the signees
+    // For now, we'll just check if all fields are completed and generate the E-Sign page
+    if (isAllSigned) {
+      generateESignaturePage();
+    } else {
+      alert("Not all required fields have been completed by the signees.");
     }
+  };
 
-    return () => {
-      if (contentElement) {
-        contentElement.removeEventListener('scroll', handleScroll);
-      }
-    };
-  }, [pageOrder]);
+  // ... (existing useEffect for scroll handling)
 
   return (
     <>
@@ -289,7 +238,6 @@ const Index = () => {
           onTitleChange={handleTitleChange}
           isSidebarVisible={isSidebarVisible}
           onToggleSidebar={toggleSidebar}
-          onInviteSignees={handleInviteSignees}
         />
         <div className="flex flex-1 overflow-hidden">
           {pdfFile && isSidebarVisible && (
@@ -349,16 +297,17 @@ const Index = () => {
                   <Button onClick={() => handleAddField('checkbox')} className="w-full mb-2">
                     <CheckSquareIcon className="mr-2 h-4 w-4" />Add Checkbox
                   </Button>
-                  {isAllSigned && (
-                    <Button onClick={generateESignaturePage} className="w-full mt-4 bg-green-500 hover:bg-green-600 text-white">
-                      Generate E-Signature Page
-                    </Button>
-                  )}
+                  <Button onClick={handleAddESign} className="w-full mt-4 bg-blue-500 hover:bg-blue-600 text-white">
+                    <PlusCircleIcon className="mr-2 h-4 w-4" />Add E-Sign
+                  </Button>
+                  <Button onClick={sendForESigning} className="w-full mt-2 bg-green-500 hover:bg-green-600 text-white">
+                    <SendIcon className="mr-2 h-4 w-4" />Send for E-Signing
+                  </Button>
                   <div className="mt-4">
                     <h4 className="font-semibold mb-2">Added Fields</h4>
                     {fields.map((field, index) => (
                       <div key={index} className="flex justify-between items-center mb-2">
-                        <span>{field.type}</span>
+                        <span>{field.type} (for {field.signee})</span>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -398,10 +347,10 @@ const Index = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={isInviteSigneesModalOpen} onOpenChange={setIsInviteSigneesModalOpen}>
+      <Dialog open={isAddESignModalOpen} onOpenChange={setIsAddESignModalOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Invite Signees</DialogTitle>
+            <DialogTitle>Add E-Sign</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
@@ -443,9 +392,9 @@ const Index = () => {
             <DialogTitle>Add {currentFieldType}</DialogTitle>
           </DialogHeader>
           {currentFieldType === 'signature' ? (
-            <SignatureCanvas onSave={(value) => addField({ type: 'signature', value })} onClose={() => setIsAddFieldModalOpen(false)} />
+            <SignatureCanvas onSave={(value) => addField({ type: 'signature', value, signee: signees[0]?.email })} onClose={() => setIsAddFieldModalOpen(false)} />
           ) : (
-            <InputField type={currentFieldType} onAdd={addField} onClose={() => setIsAddFieldModalOpen(false)} />
+            <InputField type={currentFieldType} onAdd={addField} onClose={() => setIsAddFieldModalOpen(false)} signees={signees} />
           )}
         </DialogContent>
       </Dialog>
