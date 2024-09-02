@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import HelpButton from '../components/HelpButton';
 import Draggable from 'react-draggable';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
@@ -25,7 +26,48 @@ const SignatureCanvas = ({ onSave, onClose }) => {
 };
 
 const InputField = ({ type, onAdd, onClose, signees }) => {
-  // ... (existing InputField component code)
+  const [value, setValue] = useState('');
+  const [selectedSignee, setSelectedSignee] = useState(signees[0]?.email || '');
+
+  const handleAdd = () => {
+    if (value && selectedSignee) {
+      onAdd({ type, value, signee: selectedSignee });
+      onClose();
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Select value={selectedSignee} onValueChange={setSelectedSignee}>
+        <SelectTrigger>
+          <SelectValue placeholder="Select signee" />
+        </SelectTrigger>
+        <SelectContent>
+          {signees.map((signee) => (
+            <SelectItem key={signee.email} value={signee.email}>
+              {signee.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {type === 'signature' ? (
+        <SignatureCanvas onSave={(signatureValue) => {
+          setValue(signatureValue);
+          handleAdd();
+        }} onClose={onClose} />
+      ) : (
+        <Input
+          type={type === 'date' ? 'date' : 'text'}
+          placeholder={`Enter ${type}`}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+      )}
+      {type !== 'signature' && (
+        <Button onClick={handleAdd}>Add {type}</Button>
+      )}
+    </div>
+  );
 };
 
 const DraggableField = ({ field, index, onRemove }) => {
@@ -382,11 +424,12 @@ const Index = () => {
           <DialogHeader>
             <DialogTitle>Add {currentFieldType}</DialogTitle>
           </DialogHeader>
-          {currentFieldType === 'signature' ? (
-            <SignatureCanvas onSave={(value) => addField({ type: 'signature', value, signee: signees[0]?.email })} onClose={() => setIsAddFieldModalOpen(false)} />
-          ) : (
-            <InputField type={currentFieldType} onAdd={addField} onClose={() => setIsAddFieldModalOpen(false)} signees={signees} />
-          )}
+          <InputField
+            type={currentFieldType}
+            onAdd={addField}
+            onClose={() => setIsAddFieldModalOpen(false)}
+            signees={signees}
+          />
         </DialogContent>
       </Dialog>
       <HelpButton />
