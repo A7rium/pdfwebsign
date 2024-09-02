@@ -22,7 +22,88 @@ const DragDropArea = ({ onFileChange }) => {
 };
 
 const SignatureCanvas = ({ onSave, onClose }) => {
-  // ... (existing SignatureCanvas component code)
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    context.lineWidth = 2;
+    context.strokeStyle = '#000000';
+  }, []);
+
+  const startDrawing = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    canvas.getContext('2d').beginPath();
+    canvas.getContext('2d').moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    canvas.getContext('2d').lineTo(x, y);
+    canvas.getContext('2d').stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const handleSave = () => {
+    const canvas = canvasRef.current;
+    const signatureDataUrl = canvas.toDataURL();
+    onSave(signatureDataUrl);
+  };
+
+  return (
+    <div className="p-4">
+      <canvas
+        ref={canvasRef}
+        width={300}
+        height={150}
+        className="border border-gray-300"
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={stopDrawing}
+        onMouseOut={stopDrawing}
+      />
+      <div className="mt-4 flex justify-between">
+        <Button onClick={handleSave}>Save Signature</Button>
+        <Button onClick={onClose}>Cancel</Button>
+      </div>
+    </div>
+  );
+};
+
+const DraggableField = ({ field, index, onRemove, onDoubleClick }) => {
+  return (
+    <Draggable bounds="parent" defaultPosition={field.position}>
+      <div
+        className="absolute cursor-move bg-blue-200 border border-blue-400 p-2 rounded"
+        onDoubleClick={() => onDoubleClick(index)}
+      >
+        {field.type}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-2"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(index);
+          }}
+        >
+          <TrashIcon className="h-4 w-4" />
+        </Button>
+      </div>
+    </Draggable>
+  );
 };
 
 const InputField = ({ type, onAdd, onClose, signees }) => {
@@ -30,7 +111,7 @@ const InputField = ({ type, onAdd, onClose, signees }) => {
   const [selectedSignee, setSelectedSignee] = useState(signees[0]?.email || '');
 
   const handleAdd = () => {
-    if (value && selectedSignee) {
+    if ((type !== 'signature' && value) || (type === 'signature' && selectedSignee)) {
       onAdd({ type, value, signee: selectedSignee });
       onClose();
     }
@@ -68,10 +149,6 @@ const InputField = ({ type, onAdd, onClose, signees }) => {
       )}
     </div>
   );
-};
-
-const DraggableField = ({ field, index, onRemove }) => {
-  // ... (existing DraggableField component code)
 };
 
 const Index = () => {
@@ -151,7 +228,7 @@ const Index = () => {
   };
 
   const addField = (field) => {
-    setFields([...fields, field]);
+    setFields([...fields, { ...field, position: { x: 0, y: 0 } }]);
     setIsAddFieldModalOpen(false);
   };
 
@@ -162,8 +239,7 @@ const Index = () => {
   };
 
   const handleAddField = (type) => {
-    setCurrentFieldType(type);
-    setIsAddFieldModalOpen(true);
+    addField({ type, value: '', signee: signees[0]?.email || '', position: { x: 0, y: 0 } });
   };
 
   const handleAddESign = () => {
@@ -256,6 +332,11 @@ const Index = () => {
     }
   };
 
+  const handleFieldDoubleClick = (index) => {
+    setCurrentFieldType(fields[index].type);
+    setIsAddFieldModalOpen(true);
+  };
+
   return (
     <>
       <div className="flex flex-col h-screen bg-gradient-to-br from-purple-100 to-pink-100">
@@ -306,6 +387,7 @@ const Index = () => {
                               field={field}
                               index={fieldIndex}
                               onRemove={removeField}
+                              onDoubleClick={handleFieldDoubleClick}
                             />
                           ))}
                         </div>
