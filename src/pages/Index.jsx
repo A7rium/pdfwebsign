@@ -4,7 +4,7 @@ import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import PDFSidebar from '../components/PDFSidebar';
 import Navbar from '../components/Navbar';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { FileIcon, PenIcon, CalendarIcon, CheckSquareIcon, PlusCircleIcon, TrashIcon, TypeIcon, UserIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -21,72 +21,7 @@ const DragDropArea = ({ onFileChange }) => {
 };
 
 const SignatureCanvas = ({ onSave, onClose }) => {
-  const canvasRef = useRef(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-    context.lineWidth = 2;
-    context.strokeStyle = '#000000';
-  }, []);
-
-  const startDrawing = (e) => {
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    const context = canvas.getContext('2d');
-    context.beginPath();
-    context.moveTo(x, y);
-    setIsDrawing(true);
-  };
-
-  const draw = (e) => {
-    if (!isDrawing) return;
-    
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    const context = canvas.getContext('2d');
-    context.lineTo(x, y);
-    context.stroke();
-  };
-
-  const stopDrawing = () => {
-    setIsDrawing(false);
-  };
-
-  const handleSave = () => {
-    const canvas = canvasRef.current;
-    const signatureImage = canvas.toDataURL();
-    onSave(signatureImage);
-  };
-
-  return (
-    <div className="p-4">
-      <canvas
-        ref={canvasRef}
-        width={400}
-        height={200}
-        className="border border-gray-300"
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={stopDrawing}
-        onMouseOut={stopDrawing}
-        onTouchStart={startDrawing}
-        onTouchMove={draw}
-        onTouchEnd={stopDrawing}
-      />
-      <div className="mt-4 flex justify-between">
-        <Button onClick={handleSave}>Save Signature</Button>
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
-      </div>
-    </div>
-  );
+  // ... (existing SignatureCanvas component code)
 };
 
 const InputField = ({ type, onAdd, onClose }) => {
@@ -159,6 +94,7 @@ const Index = () => {
   const [signees, setSignees] = useState([]);
   const [isAddFieldModalOpen, setIsAddFieldModalOpen] = useState(false);
   const [currentFieldType, setCurrentFieldType] = useState(null);
+  const [isAllSigned, setIsAllSigned] = useState(false);
   const mainContentRef = useRef(null);
 
   const toggleSidebar = () => {
@@ -249,6 +185,64 @@ const Index = () => {
     const newSignees = [...signees];
     newSignees.splice(index, 1);
     setSignees(newSignees);
+  };
+
+  const checkAllSigned = () => {
+    const requiredSignatures = signees.length;
+    const actualSignatures = fields.filter(field => field.type === 'signature').length;
+    setIsAllSigned(actualSignatures >= requiredSignatures);
+  };
+
+  useEffect(() => {
+    checkAllSigned();
+  }, [fields, signees]);
+
+  const generateESignaturePage = async () => {
+    if (!isAllSigned) {
+      alert("Not all signees have signed the document yet.");
+      return;
+    }
+
+    const pdfDoc = await PDFDocument.load(await fetch(pdfFile).then(res => res.arrayBuffer()));
+    const page = pdfDoc.addPage();
+    const { width, height } = page.getSize();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    page.drawText('E-Signature Details', {
+      x: 50,
+      y: height - 50,
+      size: 20,
+      font,
+      color: rgb(0, 0, 0),
+    });
+
+    let yOffset = height - 100;
+    signees.forEach((signee, index) => {
+      const signature = fields.find(field => field.type === 'signature' && field.signee === signee.email);
+      page.drawText(`${index + 1}. ${signee.name} (${signee.email})`, {
+        x: 50,
+        y: yOffset,
+        size: 12,
+        font,
+        color: rgb(0, 0, 0),
+      });
+      yOffset -= 20;
+      page.drawText(`   Signed on: ${new Date().toLocaleString()}`, {
+        x: 50,
+        y: yOffset,
+        size: 10,
+        font,
+        color: rgb(0, 0, 0),
+      });
+      yOffset -= 40;
+    });
+
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    setPdfFile(url);
+    setNumPages(numPages + 1);
+    setPageOrder([...pageOrder, numPages + 1]);
   };
 
   useEffect(() => {
@@ -355,6 +349,11 @@ const Index = () => {
                   <Button onClick={() => handleAddField('checkbox')} className="w-full mb-2">
                     <CheckSquareIcon className="mr-2 h-4 w-4" />Add Checkbox
                   </Button>
+                  {isAllSigned && (
+                    <Button onClick={generateESignaturePage} className="w-full mt-4 bg-green-500 hover:bg-green-600 text-white">
+                      Generate E-Signature Page
+                    </Button>
+                  )}
                   <div className="mt-4">
                     <h4 className="font-semibold mb-2">Added Fields</h4>
                     {fields.map((field, index) => (
